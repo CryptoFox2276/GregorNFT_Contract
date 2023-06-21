@@ -1,113 +1,151 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("LASMBOOST", function() {
+const fs = require("fs");
+
+const burningAddress = ethers.constants.AddressZero;
+
+describe("GoldTier", function() {
+    const SUPPLY_MAX = 9500;
+    const oldContractAddress = "0x450BF41e6F793e2940dE5a05473E19BB0fE5ccc9";
     let owner, addr1, addr2, addr3, addr4;
-    let LASMBOOST, lasmboost;
-    it("Deploy contract", async function() {
-        LASMBOOST = await ethers.getContractFactory("LasMetaGameBooster");
-        lasmboost = await LASMBOOST.deploy();
-        await lasmboost.deployed();
+    let contractOwner;
+    let buyerInfos;
+    let buyerAddressList = [];
+    let GOLD, gold, oldContract;
+    it("Getting old Contract", async function() {
+        oldContract = await ethers.getContractAt("GoldTier", oldContractAddress);
     })
 
-    it("Setting config", async function() {
+    it("Deploying new contract", async function() {
+        GOLD = await ethers.getContractFactory("GoldTier");
+        gold = await GOLD.deploy();
+        await gold.deployed();
+        console.log("Deployed contract address:", gold.address);
+        contractOwner = await gold.owner();
+        console.log("Owner address:", contractOwner);
+    })
+
+    it("Setting baseURI", async function() {
         [owner, addr1, addr2, addr3, addr4] = await ethers.getSigners();
-        await lasmboost.setBaseURI("https://ipfs.io/ipfs/Qmcgp4ojGjH7K4nJJQAzpY8QQLE2VZshci1mrJoW81X537/");
-        await lasmboost.setEnableMint(true);
     })
 
-    it("Add whitelist", async function() {
-        let whitelist = [];
+    it("Setting buyer information", async function() {
+        fs.readFile("buyerInformationForGold_demo.json", async function(err, buf) {
+            if(err) console.error("Error while reading buyerInformationForGold_demo.json file:", err)
+            else {
+                buyerInfos = JSON.parse(buf.toString());
 
-        whitelist.push(addr1.address);
-        whitelist.push(addr2.address);
+                for(let i = 0 ; i < buyerInfos.length ; i ++) {
+                    buyerAddressList.push(buyerInfos[i].address);
+                }
 
-        await lasmboost.addWhitelist(whitelist);
+                await gold.addBuyerlist(buyerAddressList);
+            }
+        })
     })
 
-    it("Starting presale mint", async function() {
-        await lasmboost.setPresale();
+    it("Minting " + SUPPLY_MAX + " Gold NFT", async function() {
+        await gold.mint(SUPPLY_MAX);
     })
 
-    it("Whitelist mint", async function() {
-        let pre_sale_max = await lasmboost.PRE_SALE_MAX();
+    it("Migrating NFTs of addr3", async function() {
+            let res = buyerInfos?.filter(ele => ele.address == addr3.address);
+            let tokenIds = [];
+            res?.forEach(element => {
+                tokenIds.push(element.tokenid);
+            });
 
-        console.log("addr1 balance before wl mint", ethers.utils.formatEther(await addr1.getBalance()));
+            console.log(tokenIds);
 
-        await lasmboost.freeMint(parseInt(pre_sale_max));
-        await lasmboost.connect(addr1).freeMint(parseInt(pre_sale_max));
-        await lasmboost.connect(addr2).freeMint(3);
+            // Burning old nfts
+            tokenIds.forEach(id => {
+                oldContract.connect(addr3).transferFrom(addr3, burningAddress, id);
+            })
 
-        console.log("addr1 balance after wl mint", ethers.utils.formatEther(await addr1.getBalance()));
+            // migrating new nfts
+            if(tokenIds.length > 0) {
+                await gold.migrate(addr3.address, tokenIds);
+            }
     })
 
-    it("Starting pubsale mint", async function() {
-        await lasmboost.setPubsale();
+    it("Migrating error with invalid tokenid", async function() {
+        await gold.migrate(addr3.address, [9500]);
     })
 
-
-    it("Pubsale mint by addr1", async function() {
-        let pubsale_max = await lasmboost.PUB_SALE_MAX();
-        console.log("addr1 balance before public mint", ethers.utils.formatEther(await addr1.getBalance()));
-        await lasmboost.connect(addr1).mint(parseInt(pubsale_max), {value: ethers.utils.parseEther("1")})
-        console.log("addr1 balance after public mint", ethers.utils.formatEther(await addr1.getBalance()));
-
-    })
-    it("Pubsale mint by addr2", async function() {
-        let pubsale_max = await lasmboost.PUB_SALE_MAX();
-        console.log("addr2 balance before public mint", ethers.utils.formatEther(await addr2.getBalance()));
-        await lasmboost.connect(addr2).mint(parseInt(pubsale_max), {value: ethers.utils.parseEther("1")})
-        console.log("addr2 balance after public mint", ethers.utils.formatEther(await addr2.getBalance()));
-    })
-    it("Pubsale mint by addr3", async function() {
-        let pubsale_max = await lasmboost.PUB_SALE_MAX();
-        console.log("addr3 balance before public mint", ethers.utils.formatEther(await addr3.getBalance()));
-        await lasmboost.connect(addr3).mint(parseInt(pubsale_max), {value: ethers.utils.parseEther("1")})
-        console.log("addr3 balance after public mint", ethers.utils.formatEther(await addr3.getBalance()));
-    })
-
-    it("Setting airdrop", async function() {
-        await lasmboost.airdrop([addr1.address, addr2.address], [3, 5]);
-        let tx = await lasmboost.getClaimableAmount(addr1.address);
-        console.log(tx);
-        tx = await lasmboost.getClaimableAmount(addr2.address);
-        console.log(tx);
-    })
-
-    it("Claiming", async function() {
-        let tx = await lasmboost.connect(addr1).claim();
-        await tx.wait();
-        await lasmboost.connect(addr2).claim();
-        await tx.wait();
-    })
-
-    it("withdrawAll", async function() {
-        console.log("owner balance before withdraw", ethers.utils.formatEther(await owner.getBalance()))
-        await lasmboost.withdrawAll();
-        console.log("owner balance after withdraw", ethers.utils.formatEther(await owner.getBalance()))
+    it("Migrating error with unavailable address", async function() {
+        await gold.migrate(addr1.address, [1]);
     })
 
     it("Result", async function() {
-        console.log("total supply:", await lasmboost.totalSupply())
-        console.log("Whitelist mint amount:", await lasmboost.totalPresaleMinted())
-        console.log("Pubsale mint amount:", await lasmboost.totalPubsaleMinted())
+        console.log(await gold.ownerOf(0));
+    })
+})
 
-        console.log("-----------------------");
-        let tx0 = await lasmboost.tokensOfOwner(owner.address);
-        console.log(tx0);
-        let tx1 = await lasmboost.tokensOfOwner(addr1.address);
-        console.log(tx1);
-        let tx2 = await lasmboost.tokensOfOwner(addr2.address);
-        console.log(tx2);
-        let tx3 = await lasmboost.tokensOfOwner(addr3.address);
-        console.log(tx3);
-        // let res = await lasmboost.totalSupply();
-        // let tx;
-        // for(let i = 1 ; i < parseInt(res) ; i ++) {
-        //     tx = await lasmboost.getTokenMintInfo(i);
-        //     console.log(tx.creater, new Date(parseInt(tx.mintedTimestamp) * 1000))
-        // }
-        console.log("-----------------------");
+describe("PlatinumTier", function() {
+    const SUPPLY_MAX = 500;
+    const oldContractAddress = "0xF3aCb08217714C802574aE4E03F5a21FB71636BB";
+    let owner, addr1, addr2, addr3, addr4;
+    let contractOwner;
+    let buyerInfos;
+    let buyerAddressList = [];
+    let PLATINUM, platinum, oldContract;
+    it("Getting old Contract", async function() {
+        oldContract = await ethers.getContractAt("PlatinumTier", oldContractAddress);
     })
 
+    it("Deploying new contract", async function() {
+        PLATINUM = await ethers.getContractFactory("PlatinumTier");
+        platinum = await PLATINUM.deploy();
+        await platinum.deployed();
+        console.log("Deployed contract address:", platinum.address);
+        contractOwner = await platinum.owner();
+    })
+
+    it("Setting baseURI", async function() {
+        [owner, addr1, addr2, addr3, addr4] = await ethers.getSigners();
+    })
+
+    it("Setting buyer information", async function() {
+        fs.readFile("buyerInformationForPlatinum_demo.json", async function(err, buf) {
+            if(err) console.error("Error while reading buyerInformationForPlatinum_demo.json file:", err)
+            else {
+                buyerInfos = JSON.parse(buf.toString());
+
+                for(let i = 0 ; i < buyerInfos.length ; i ++) {
+                    buyerAddressList.push(buyerInfos[i].address);
+                }
+
+                await platinum.addBuyerlist(buyerAddressList);
+            }
+        })
+    })
+
+    it("Minting " + SUPPLY_MAX + " Platinum NFT", async function() {
+        await platinum.mint(SUPPLY_MAX);
+    })
+
+    it("Migrating NFTs of addr3", async function() {
+            let res = buyerInfos.filter(ele => ele.address == addr3.address);
+            let tokenIds = [];
+            res?.forEach(element => {
+                tokenIds.push(element.tokenid);
+            });
+
+            console.log(tokenIds);
+
+            // Burning old nfts
+            tokenIds.forEach(id => {
+                oldContract.connect(addr3).transferFrom(addr3, burningAddress, id);
+            })
+
+            // migrating new nfts
+            if(tokenIds.length > 0) {
+                await platinum.migrate(addr3.address, tokenIds);
+            }
+    })
+
+    it("Result", async function() {
+        console.log(await platinum.ownerOf(0));
+    })
 })
