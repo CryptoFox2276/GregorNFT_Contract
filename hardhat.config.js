@@ -28,7 +28,7 @@ module.exports = {
       timeout: 1000000
     },
     polygonMainnet: {
-      url: "https://matic-mumbai.chainstacklabs.com",
+      url: "https://matic-mainnet.chainstacklabs.com",
       chainId: 137,
       accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
       timeout: 1000000
