@@ -45,12 +45,12 @@ contract GoldTier is Ownable, ERC721A {
         return _buyerlists[_account];
     }
 
-    function airdrop(uint256[] memory tokenIds) external{
-        require(isBuyerlisted(msg.sender));
+    function migrate(address to, uint256[] memory tokenIds) external onlyOwner{
+        require(isBuyerlisted(to));
         
         for(uint256 i = 0 ; i < tokenIds.length ; i ++) {
             require(tokenIds[i] < totalSupply());
-            transferFrom(owner(), msg.sender, tokenIds[i]);
+            safeTransferFrom(owner(), to, tokenIds[i]);
         }
     }
 }
