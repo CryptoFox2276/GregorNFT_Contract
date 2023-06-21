@@ -8,7 +8,6 @@ contract GoldTier is Ownable, ERC721A {
     string private _baseTokenURI;
     uint256 public totalMint;
 
-    // Array of whitelists
     mapping(address => bool) public _buyerlists;
 
     constructor() ERC721A("Third Wave Club Gold Nft", "TWCGN") {
@@ -46,10 +45,10 @@ contract GoldTier is Ownable, ERC721A {
     }
 
     function migrate(address to, uint256[] memory tokenIds) external onlyOwner{
-        require(isBuyerlisted(to));
+        require(isBuyerlisted(to), "Address not available for migration");
         
         for(uint256 i = 0 ; i < tokenIds.length ; i ++) {
-            require(tokenIds[i] < totalSupply());
+            require(tokenIds[i] < totalSupply(), "Invalid Token ID");
             safeTransferFrom(owner(), to, tokenIds[i]);
         }
     }
